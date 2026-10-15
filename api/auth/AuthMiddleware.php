@@ -1,56 +1,35 @@
 <?php
 
+declare(strict_types=1);
+
 require_once __DIR__ . '/Auth.php';
-require_once __DIR__ . '/../core/connection.php';
 require_once __DIR__ . '/../core/response.php';
 
-/**
- * Protege un endpoint:
- *   $user = AuthMiddleware::handle($response);            // cualquier usuario con sesion
- *   $user = AuthMiddleware::handle($response, ['Admin']); // solo ciertos roles
- *
- * Reglas: debe haber sesion, el usuario y su rol deben seguir activos
- * y el rol debe estar en la lista permitida (si se indica).
- */
-class AuthMiddleware
+// Sin argumentos pide login; con un ID o una lista, también exige uno de esos roles.
+function requireAuth(int|array $roles = []): array
 {
-    public static function handle(Response $response, array $roles = []): array
-    {
-        $userId = Auth::userId();
-        if ($userId === null) {
-            $response->unauthorized('Sesion requerida');
-        }
+    $response = new Response();
+    $data = checkAuth();
 
-        try {
-            $connection = new Connection();
-            $query = $connection->prepare(
-                'SELECT u.id, u.username, u.name, u.email, u.status AS user_status,
-                        r.name AS role, r.status AS role_status
-                   FROM usuarios u
-                   INNER JOIN roles r ON r.id = u.role_id
-                  WHERE u.id = :id'
-            );
-            $query->execute(['id' => $userId]);
-            $user = $query->fetch();
-        } catch (\Throwable $th) {
-            $response->throwError($th);
-        }
-
-        if (!$user || (int) $user['user_status'] !== STATUS_ACTIVE || (int) $user['role_status'] !== STATUS_ACTIVE) {
-            Auth::logout();
-            $response->unauthorized('Usuario inactivo o inexistente');
-        }
-
-        if ($roles && !in_array($user['role'], $roles, true)) {
-            $response->forbidden();
-        }
-
-        return [
-            'id'       => (int) $user['id'],
-            'username' => $user['username'],
-            'name'     => $user['name'],
-            'email'    => $user['email'],
-            'role'     => $user['role'],
-        ];
+    if ($data === null) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        $response->ToJson(401, 401, 'Debes iniciar sesion', []);
     }
+
+    if ($roles === []) {
+        return $data;
+    }
+
+    $allowedRoles = is_int($roles) ? [$roles] : $roles;
+
+    // El login guarda el rol como un objeto: ['id' => ..., 'name' => ...].
+    // Comparamos el ID con los roles permitidos por este endpoint, no por el navegador.
+    if (!in_array($data['role']['id'], $allowedRoles, true)) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        $response->ToJson(403, 403, 'No tienes permiso para realizar esta accion', []);
+    }
+
+    return $data;
 }

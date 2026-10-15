@@ -1,73 +1,59 @@
 <?php
 
-require_once __DIR__ . '/configuration.php';
-
-/**
- * Respuesta JSON para todo el API: { "success": bool, "message": string, "data": mixed }
- * Cada metodo envia la respuesta y termina la ejecucion.
- */
 class Response
 {
-    public function __construct()
+    public function ToJson($httpCode, $internalCode, $message, $data)
     {
-        header('Content-Type: application/json; charset=utf-8');
-    }
-
-    public function send(bool $success, string $message, $data, int $code)
-    {
-        http_response_code($code);
-        echo json_encode([
-            'success' => $success,
+        http_response_code($httpCode);
+        die(json_encode([
+            'code' => $internalCode,
             'message' => $message,
-            'data'    => $data,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
+            'data' => $data
+        ]));
     }
 
-    public function success(string $message, $data = [], int $code = 200)
+    public function success($message, $data)
     {
-        $this->send(true, $message, $data, $code);
+        $this->ToJson(200, 200, $message, $data);
     }
 
-    public function error(string $message, $data = [], int $code = 400)
+    public function error($message, $data)
     {
-        $this->send(false, $message, $data, $code);
+        $this->ToJson(400, 400, $message, $data);
     }
 
-    public function invalidParams()
+    public function invalidParams($data = [])
     {
-        $this->error('Parametros invalidos', [], 400);
+        $this->ToJson(400, 400, "Parametros invalidos", $data);
     }
 
-    public function unauthorized(string $message = 'No autorizado')
+    public function invalidMethod($data = [])
     {
-        $this->error($message, [], 401);
+        $this->ToJson(405, 405, "Metodo no permitido", $data);
     }
 
-    public function forbidden(string $message = 'No tienes permisos para esta accion')
+    public function notFound()
     {
-        $this->error($message, [], 403);
+        $this->ToJson(404, 404, "Recurso no encontrado", []);
     }
 
-    public function notFound(string $message = 'Registro no encontrado')
+    public function internalServerError()
     {
-        $this->error($message, [], 404);
+        $this->ToJson(500, 500, "No se pudo procesar la peticion", []);
     }
 
-    public function methodNotAllowed()
+    public function throwError(Throwable $error)
     {
-        $this->error('Metodo no permitido', [], 405);
+        $this->ToJson(500, 500, $error->getMessage(), [
+            'trace' => $error->getTrace()
+        ]);
     }
 
-    /**
-     * Error inesperado (500). Se guarda en el log y solo se muestra el
-     * detalle cuando APP_DEBUG=true en el .env.
-     */
-    public function throwError(\Throwable $th, string $message = 'Error interno del servidor')
+    public function debugError($error)
     {
-        error_log('[nesflis] ' . $th->getMessage() . ' en ' . $th->getFile() . ':' . $th->getLine());
-
-        $data = APP_DEBUG ? ['error' => $th->getMessage(), 'line' => $th->getLine()] : [];
-        $this->error($message, $data, 500);
+        $this->ToJson(500, 500, $error->getMessage(), [
+            'file' => $error->getFile(),
+            'line' => $error->getLine()
+        ]);
     }
 }
