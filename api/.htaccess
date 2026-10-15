@@ -1,0 +1,4 @@
+# Nadie debe poder abrir el .env desde el navegador
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
